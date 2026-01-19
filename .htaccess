@@ -1,6 +1,3 @@
-# ============================================
-# SECURITY HEADERS - GRADE A+
-# ============================================
 
 # 1. CONTENT SECURITY POLICY (CSP)
 <IfModule mod_headers.c>

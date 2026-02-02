@@ -697,6 +697,68 @@ figure.effect-honey:hover h2 i {
 p {
   line-height: 1.9;
 }
+/* 🔧 MODIFIKASI: Tambahkan di file css/tooplate-infinite-loop.css */
+
+/* Jobs Monitor Section */
+#jobs-monitor {
+  background-color: #f8f9fa;
+}
+
+.filter-btn.active {
+  background-color: #007bff;
+  color: white;
+}
+
+/* Progress Bar */
+.progress {
+  height: 8px;
+  margin-bottom: 5px;
+}
+
+.progress-bar {
+  background-color: #28a745;
+}
+
+/* Status Badges */
+.badge-ongoing {
+  background-color: #ffc107;
+  color: #212529;
+}
+
+.badge-completed {
+  background-color: #28a745;
+  color: white;
+}
+
+.badge-canceled {
+  background-color: #dc3545;
+  color: white;
+}
+
+/* Table Styles */
+#jobs-table {
+  font-size: 14px;
+}
+
+#jobs-table th {
+  border-top: none;
+  font-weight: 600;
+}
+
+/* Driver Avatar */
+.driver-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  margin-right: 10px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  #jobs-table {
+    font-size: 12px;
+  }
+  
 @media (min-width: 768px) {
   .tm-intro-text-container {
     padding-left: 0px;
@@ -780,4 +842,5 @@ p {
   .tm-gallery-item {
     margin: 0;
   }
+}
 }

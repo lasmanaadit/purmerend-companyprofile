@@ -400,11 +400,6 @@ content="
           <button type="button" class="btn btn-outline-primary filter-btn" data-filter="ongoing">Ongoing</button>
         </div>
       </div>
-      <div class="col-md-4 text-right">
-        <button id="refreshJobs" class="btn btn-primary">
-          <i class="fa fa-refresh"></i> Refresh Data
-        </button>
-      </div>
     </div>
     
     <!-- Stats Cards -->
@@ -428,8 +423,8 @@ content="
       <div class="col-md-3 col-sm-6 mb-3">
         <div class="card bg-warning text-white">
           <div class="card-body text-center">
-            <h6 class="card-title">Today's Income</h6>
-            <h3 class="mb-0" id="today-income">€0</h3>
+            <h6 class="card-title">Total Income</h6>
+            <h3 class="mb-0" id="total-income">€0</h3>
           </div>
         </div>
       </div>
@@ -458,7 +453,6 @@ content="
                     <th>Distance</th>
                     <th>Income</th>
                     <th>Status</th>
-                    <th>Progress</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -840,558 +834,242 @@ content="
 
 // Trucky API Configuration
 const TRUCKY_API = {
-  BASE_URL: 'https://e.truckyapp.com',
-  COMPANY_ID: '42109', // Ganti dengan Company ID Purmerend
-  ACCESS_TOKEN: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjb21wYW55X2lkIjo0MjEwOX0.dq_S0IrgQ51PJJg394EixeC5NtrtrAJVDIceFLaJSAw' // Dapatkan dari Trucky VTC Hub
-};
+            BASE_URL: 'https://e.truckyapp.com',
+            COMPANY_ID: '42109',  // Ganti dengan Company ID
+            ACCESS_TOKEN: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjb21wYW55X2lkIjo0MjEwOX0.dq_S0IrgQ51PJJg394EixeC5NtrtrAJVDIceFLaJSAw',  // Ganti dengan Access Token
+        };
 
-// State Management
-let jobsData = [];
-let currentPage = 1;
-let totalPages = 1;
-const itemsPerPage = 10;
+        // ========== GLOBAL VARIABLES ==========
+        let jobsData = [];
+        let currentPage = 1;
+        let totalPages = 1;
 
-// Trucky API Service
-const TruckyService = {
-  // Get all company jobs
-  async getCompanyJobs(page = 1, filters = {}) {
-    try {
-      const params = new URLSearchParams({
-        page: page,
-        ...filters
-      });
-      
-      const response = await fetch(
-        `${TRUCKY_API.BASE_URL}/api/v1/company/${TRUCKY_API.COMPANY_ID}/jobs?${params}`,
-        {
-          headers: {
-            'X-ACCESS-TOKEN': TRUCKY_API.ACCESS_TOKEN,
-            'Accept': 'application/json'
-          }
+        // ========== TRUCKY API SERVICE ==========
+        const TruckyService = {
+            // Get company jobs dengan filter
+            async getCompanyJobs(page = 1, filters = {}) {
+                try {
+                    
+                    // Real API call
+                    const params = new URLSearchParams({
+                        page: page,
+                        ...filters
+                    });
+                    
+                    const response = await fetch(
+                        `${TRUCKY_API.BASE_URL}/api/v1/company/${TRUCKY_API.COMPANY_ID}/jobs?${params}`,
+                        {
+                            headers: {
+                                'X-ACCESS-TOKEN': TRUCKY_API.ACCESS_TOKEN,
+                                'Accept': 'application/json'
+                            }
+                        }
+                    );
+                    
+                    if (!response.ok) throw new Error(`API Error: ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    console.error('Error:', error);
+                    return this.getMockData(filters.status); // Fallback ke mock
+                }
+            },
+            
+            };
+
+        // ========== UI RENDERER ==========
+        const UIRenderer = {
+            // Show loading state
+            showLoading() {
+                const tbody = document.getElementById('jobs-table-body');
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="sr-only">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading jobs...</p>
+                        </td>
+                    </tr>
+                `;
+            },
+            
+            // Show error message
+            showError(message) {
+                const tbody = document.getElementById('jobs-table-body');
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center text-danger">
+                            <i class="fa fa-exclamation-triangle fa-2x mb-3"></i>
+                            <p>${message}</p>
+                            <button class="btn btn-sm btn-outline-primary" onclick="location.reload()">
+                                Try Again
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            },
+            
+            // Render jobs table
+            renderJobsTable(jobs) {
+                const tbody = document.getElementById('jobs-table-body');
+                
+                if (!jobs || jobs.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-5">
+                                <i class="fa fa-truck fa-3x mb-3"></i>
+                                <h5>No Jobs Found</h5>
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+                
+                let html = '';
+                
+                jobs.forEach(job => {
+                    const driverName = job.driver?.name || "Unknown";
+                    const cargo = job.cargo_name || "Unknown";
+                    const route = `${job.source_city_name || "???"} → ${job.destination_city_name || "???"}`;
+                    const distance = job.planned_distance_km ? `${job.planned_distance_km.toFixed(0)} km` : "N/A";
+                    const income = job.income ? `€${job.income.toLocaleString()}` : "N/A";
+                    const status = job.status || "unknown";
+                    
+                    // Status badge
+                    let statusBadge = '';
+                    let progressBar = '';
+                    
+                    if (status === 'in_progress') {
+                        statusBadge = '<span class="badge badge-ongoing">Ongoing</span>';
+                        const progress = job.driven_distance_km && job.planned_distance_km 
+                            ? Math.min(100, Math.round((job.driven_distance_km / job.planned_distance_km) * 100))
+                            : 50;
+                        progressBar = `
+                            <div class="progress mb-2">
+                                <div class="progress-bar" style="width: ${progress}%">${progress}%</div>
+                            </div>
+                        `;
+                    } else if (status === 'completed') {
+                        statusBadge = '<span class="badge badge-completed">Completed</span>';
+                        progressBar = '<small class="text-muted">Delivered</small>';
+                    } else {
+                        statusBadge = '<span class="badge badge-secondary">Unknown</span>';
+                    }
+                    
+                    html += `
+                        <tr>
+                            <td>
+                                <img src="${job.driver?.avatar_url || ''}" 
+                                     alt="${driverName}" 
+                                     class="driver-avatar"
+                                     onerror="this.style.display='none'">
+                                ${driverName}
+                            </td>
+                            <td>${cargo}</td>
+                            <td>${route}</td>
+                            <td>${distance}</td>
+                            <td>${income}</td>
+                            <td>${statusBadge}</td>
+                            <td>${progressBar}</td>
+                        </tr>
+                    `;
+                });
+                
+                tbody.innerHTML = html;
+            },
+            
+            // Update statistics
+            updateStats() {
+                // Total jobs
+                document.getElementById('total-jobs').textContent = jobsData.length;
+                
+                // Ongoing jobs count
+                const ongoingCount = jobsData.filter(job => job.status === 'in_progress').length;
+                document.getElementById('ongoing-jobs').textContent = ongoingCount;
+                
+                // Total income (hanya dari completed jobs)
+                const totalIncome = jobsData
+                    .filter(job => job.status === 'completed' && job.income)
+                    .reduce((sum, job) => sum + (job.income || 0), 0);
+                document.getElementById('total-income').textContent = `€${totalIncome.toLocaleString()}`;
+                
+                // Active drivers count
+                const activeDrivers = [...new Set(
+                    jobsData
+                        .filter(job => job.status === 'in_progress' && job.driver)
+                        .map(job => job.driver.id)
+                )].length;
+                document.getElementById('active-drivers').textContent = activeDrivers;
+            }
+        };
+
+        // ========== MAIN FUNCTIONS ==========
+        async function loadJobs(filters = {}) {
+            try {
+                UIRenderer.showLoading();
+                
+                const response = await TruckyService.getCompanyJobs(1, filters);
+                
+                if (response && response.data) {
+                    jobsData = response.data;
+                    currentPage = response.current_page || 1;
+                    totalPages = response.last_page || 1;
+                    
+                    UIRenderer.renderJobsTable(jobsData);
+                    UIRenderer.updateStats();
+                } else {
+                    UIRenderer.showError('No data received');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                UIRenderer.showError('Failed to load jobs');
+            }
         }
-      );
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching jobs:', error);
-      return { data: [], current_page: 1, last_page: 1, total: 0 };
-    }
-  },
-  
-  // Get company stats
-  async getCompanyStats() {
-    try {
-      const response = await fetch(
-        `${TRUCKY_API.BASE_URL}/api/v1/company/${TRUCKY_API.COMPANY_ID}/stats`,
-        {
-          headers: {
-            'X-ACCESS-TOKEN': TRUCKY_API.ACCESS_TOKEN,
-            'Accept': 'application/json'
-          }
+
+        // ========== FILTER FUNCTIONS ==========
+        function loadCompletedJobs() {
+            // Update active button
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector('.filter-btn[data-filter="completed"]').classList.add('active');
+            
+            // Load data
+            loadJobs({ status: 'completed' });
         }
-      );
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-      return null;
-    }
-  },
-  
-  // Get monthly stats
-  async getMonthlyStats() {
-    try {
-      const now = new Date();
-      const response = await fetch(
-        `${TRUCKY_API.BASE_URL}/api/v1/company/${TRUCKY_API.COMPANY_ID}/stats/monthly?month=${now.getMonth() + 1}&year=${now.getFullYear()}`,
-        {
-          headers: {
-            'X-ACCESS-TOKEN': TRUCKY_API.ACCESS_TOKEN,
-            'Accept': 'application/json'
-          }
+
+        function loadOngoingJobs() {
+            // Update active button
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector('.filter-btn[data-filter="ongoing"]').classList.add('active');
+            
+            // Load data
+            loadJobs({ status: 'in_progress' });
         }
-      );
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching monthly stats:', error);
-      return null;
-    }
-  }
-};
 
-// UI Render Functions
-const UIRenderer = {
-  // Render jobs table
-  renderJobsTable(jobs, page, total) {
-    const tbody = document.getElementById('jobs-table-body');
-    
-    if (!jobs || jobs.length === 0) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="8" class="text-center text-muted">
-            <i class="fa fa-truck fa-2x mb-3"></i>
-            <p>No jobs found</p>
-            <small>Start tracking your drivers' jobs in Trucky VTC Hub</small>
-          </td>
-        </tr>
-      `;
-      return;
-    }
-    
-    let html = '';
-    
-    jobs.forEach(job => {
-      const driverName = job.driver?.name || 'Unknown Driver';
-      const driverAvatar = job.driver?.avatar_url || 'img/default-avatar.png';
-      const cargo = job.cargo_name || 'Unknown Cargo';
-      const route = `${job.source_city_name || 'Unknown'} → ${job.destination_city_name || 'Unknown'}`;
-      const distance = job.driven_distance_km ? `${job.driven_distance_km.toFixed(1)} km` : 'N/A';
-      const income = job.income ? `€${job.income.toLocaleString('de-DE')}` : 'N/A';
-      const status = job.status || 'unknown';
-      const progress = job.driven_distance_km && job.planned_distance_km 
-        ? Math.min(100, Math.round((job.driven_distance_km / job.planned_distance_km) * 100))
-        : 0;
-      
-      // Status badge
-      let statusBadge = '';
-      let progressBar = '';
-      
-      switch(status) {
-        case 'in_progress':
-          statusBadge = '<span class="badge badge-ongoing">Ongoing</span>';
-          progressBar = `
-            <div class="progress">
-              <div class="progress-bar" role="progressbar" style="width: ${progress}%">
-                ${progress}%
-              </div>
-            </div>
-            <small>${job.driven_distance_km?.toFixed(0) || 0} / ${job.planned_distance_km?.toFixed(0) || 0} km</small>
-          `;
-          break;
-        case 'completed':
-          statusBadge = '<span class="badge badge-completed">Completed</span>';
-          progressBar = '<small class="text-muted">Delivered</small>';
-          break;
-        case 'canceled':
-          statusBadge = '<span class="badge badge-canceled">Canceled</span>';
-          progressBar = '<small class="text-muted">Canceled</small>';
-          break;
-        default:
-          statusBadge = '<span class="badge badge-secondary">Unknown</span>';
-      }
-      
-      // Start time
-      const startTime = job.started_at 
-        ? new Date(job.started_at).toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: 'short',
-            hour: '2-digit',
-            minute: '2-digit'
-          })
-        : 'N/A';
-      
-      html += `
-        <tr>
-          <td>
-            <img src="${driverAvatar}" alt="${driverName}" class="driver-avatar" onerror="this.src='img/default-avatar.png'">
-            <strong>${driverName}</strong><br>
-            <small class="text-muted">${startTime}</small>
-          </td>
-          <td>
-            <strong>${cargo}</strong><br>
-            <small class="text-muted">${job.cargo_mass_t ? job.cargo_mass_t.toFixed(1) + 't' : ''}</small>
-          </td>
-          <td>
-            <br>
-            <small>${route}</small>
-          </td>
-          <td>${distance}</td>
-          <td>
-            <strong>${income}</strong>
-            ${job.fuel_used_l ? `<br><small class="text-muted">Fuel: ${job.fuel_used_l.toFixed(0)}L</small>` : ''}
-          </td>
-          <td>${statusBadge}</td>
-          <td>${progressBar}</td>
-          <td>
-            <button class="btn btn-sm btn-outline-info view-job-btn" data-job-id="${job.id}">
-              <i class="fa fa-info-circle"></i>
-            </button>
-          </td>
-        </tr>
-      `;
-    });
-    
-    tbody.innerHTML = html;
-    
-    // Add event listeners to view buttons
-    document.querySelectorAll('.view-job-btn').forEach(btn => {
-      btn.addEventListener('click', function() {
-        const jobId = this.getAttribute('data-job-id');
-        UIRenderer.showJobDetails(jobId);
-      });
-    });
-  },
-  
-  // Render pagination
-  renderPagination(currentPage, totalPages) {
-    const pagination = document.getElementById('jobs-pagination');
-    
-    if (totalPages <= 1) {
-      pagination.innerHTML = '';
-      return;
-    }
-    
-    let html = '';
-    
-    // Previous button
-    html += `
-      <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
-        <a class="page-link" href="#" data-page="${currentPage - 1}">
-          <i class="fa fa-chevron-left"></i>
-        </a>
-      </li>
-    `;
-    
-    // Page numbers
-    const maxPagesToShow = 5;
-    let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
-    let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
-    
-    if (endPage - startPage + 1 < maxPagesToShow) {
-      startPage = Math.max(1, endPage - maxPagesToShow + 1);
-    }
-    
-    for (let i = startPage; i <= endPage; i++) {
-      html += `
-        <li class="page-item ${i === currentPage ? 'active' : ''}">
-          <a class="page-link" href="#" data-page="${i}">${i}</a>
-        </li>
-      `;
-    }
-    
-    // Next button
-    html += `
-      <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
-        <a class="page-link" href="#" data-page="${currentPage + 1}">
-          <i class="fa fa-chevron-right"></i>
-        </a>
-      </li>
-    `;
-    
-    pagination.innerHTML = html;
-    
-    // Add event listeners
-    document.querySelectorAll('.page-link').forEach(link => {
-      link.addEventListener('click', function(e) {
-        e.preventDefault();
-        const page = parseInt(this.getAttribute('data-page'));
-        if (page && page !== currentPage) {
-          loadJobs(page);
+        // ========== INITIALIZATION ==========
+        function initJobMonitor() {
+            // Set default to Completed
+            loadCompletedJobs();
+            
+            // Setup event listeners
+            document.querySelector('.filter-btn[data-filter="completed"]').onclick = loadCompletedJobs;
+            document.querySelector('.filter-btn[data-filter="ongoing"]').onclick = loadOngoingJobs;
+            
+            document.getElementById('refreshJobs').onclick = function() {
+                const activeFilter = document.querySelector('.filter-btn.active');
+                if (activeFilter.getAttribute('data-filter') === 'completed') {
+                    loadCompletedJobs();
+                } else {
+                    loadOngoingJobs();
+                }
+            };
         }
-      });
-    });
-  },
-  
-  // Update stats cards
-  updateStats(stats) {
-    if (!stats) return;
-    
-    // Update total jobs
-    document.getElementById('total-jobs').textContent = stats.total || 0;
-    
-    // Count ongoing jobs
-    const ongoing = jobsData.filter(job => job.status === 'in_progress').length;
-    document.getElementById('ongoing-jobs').textContent = ongoing;
-    
-    // Calculate today's income
-    const today = new Date().toISOString().split('T')[0];
-    const todayIncome = jobsData
-      .filter(job => job.completed_at && job.completed_at.startsWith(today))
-      .reduce((sum, job) => sum + (job.income || 0), 0);
-    
-    document.getElementById('today-income').textContent = `€${todayIncome.toLocaleString('de-DE')}`;
-    
-    // Count unique active drivers
-    const activeDrivers = [...new Set(
-      jobsData
-        .filter(job => job.status === 'in_progress' && job.driver)
-        .map(job => job.driver.id)
-    )].length;
-    
-    document.getElementById('active-drivers').textContent = activeDrivers;
-  },
-  
-  // Show job details modal
-  showJobDetails(jobId) {
-    const job = jobsData.find(j => j.id == jobId);
-    if (!job) return;
-    
-    // Create modal HTML
-    const modalHTML = `
-      <div class="modal fade" id="jobDetailsModal" tabindex="-1" role="dialog">
-        <div class="modal-dialog modal-lg" role="document">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title">Job Details</h5>
-              <button type="button" class="close" data-dismiss="modal">
-                <span>&times;</span>
-              </button>
-            </div>
-            <div class="modal-body">
-              <div class="row">
-                <div class="col-md-6">
-                  <h6>Driver Information</h6>
-                  <p>
-                    <img src="${job.driver?.avatar_url || 'img/default-avatar.png'}" 
-                         alt="${job.driver?.name || 'Unknown'}" 
-                         class="driver-avatar">
-                    <strong>${job.driver?.name || 'Unknown Driver'}</strong>
-                  </p>
-                </div>
-                <div class="col-md-6">
-                  <h6>Job Status</h6>
-                  <p>
-                    ${job.status === 'in_progress' ? 
-                      '<span class="badge badge-ongoing">Ongoing</span>' : 
-                      job.status === 'completed' ? 
-                      '<span class="badge badge-completed">Completed</span>' : 
-                      '<span class="badge badge-canceled">Canceled</span>'}
-                  </p>
-                </div>
-              </div>
-              
-              <hr>
-              
-              <div class="row">
-                <div class="col-md-6">
-                  <h6>Cargo Information</h6>
-                  <p><strong>Type:</strong> ${job.cargo_name || 'N/A'}</p>
-                  <p><strong>Mass:</strong> ${job.cargo_mass_t ? job.cargo_mass_t.toFixed(1) + 't' : 'N/A'}</p>
-                  <p><strong>Market:</strong> ${job.market || 'N/A'}</p>
-                </div>
-                <div class="col-md-6">
-                  <h6>Route Information</h6>
-                  <p><strong>From:</strong> ${job.source_city_name || 'N/A'}</p>
-                  <p><strong>To:</strong> ${job.destination_city_name || 'N/A'}</p>
-                  <p><strong>Distance:</strong> ${job.planned_distance_km ? job.planned_distance_km.toFixed(1) + ' km' : 'N/A'}</p>
-                </div>
-              </div>
-              
-              <hr>
-              
-              <div class="row">
-                <div class="col-md-6">
-                  <h6>Financial Details</h6>
-                  <p><strong>Income:</strong> €${job.income ? job.income.toLocaleString('de-DE') : '0'}</p>
-                  <p><strong>Fuel Used:</strong> ${job.fuel_used_l ? job.fuel_used_l.toFixed(0) + 'L' : 'N/A'}</p>
-                  <p><strong>Fuel Cost:</strong> €${job.fuel_cost ? job.fuel_cost.toLocaleString('de-DE') : '0'}</p>
-                </div>
-                <div class="col-md-6">
-                  <h6>Timing</h6>
-                  <p><strong>Started:</strong> ${job.started_at ? new Date(job.started_at).toLocaleString() : 'N/A'}</p>
-                  <p><strong>Completed:</strong> ${job.completed_at ? new Date(job.completed_at).toLocaleString() : 'N/A'}</p>
-                  <p><strong>Game Mode:</strong> ${job.game_mode === 'mp' ? 'Multiplayer' : 'Single Player'}</p>
-                </div>
-              </div>
-              
-              ${job.vehicle_model_name ? `
-                <hr>
-                <div class="row">
-                  <div class="col-md-12">
-                    <h6>Vehicle Information</h6>
-                    <p>
-                      <strong>Truck:</strong> ${job.vehicle_brand_name || ''} ${job.vehicle_model_name || ''}
-                    </p>
-                  </div>
-                </div>
-              ` : ''}
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-    
-    // Add modal to body and show it
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-    $('#jobDetailsModal').modal('show');
-    
-    // Remove modal after hiding
-    $('#jobDetailsModal').on('hidden.bs.modal', function () {
-      $(this).remove();
-    });
-  },
-  
-  // Show loading state
-  showLoading() {
-    const tbody = document.getElementById('jobs-table-body');
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="8" class="text-center">
-          <div class="spinner-border text-primary" role="status">
-            <span class="sr-only">Loading...</span>
-          </div>
-          <p class="mt-2">Loading jobs data...</p>
-        </td>
-      </tr>
-    `;
-  },
-  
-  // Show error state
-  showError(message) {
-    const tbody = document.getElementById('jobs-table-body');
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="8" class="text-center text-danger">
-          <i class="fa fa-exclamation-triangle fa-2x mb-3"></i>
-          <p>Error loading data</p>
-          <small>${message}</small>
-          <br>
-          <button class="btn btn-sm btn-outline-primary mt-2" onclick="loadJobs()">
-            <i class="fa fa-refresh"></i> Try Again
-          </button>
-        </td>
-      </tr>
-    `;
-  }
-};
 
-// Main Functions
-async function loadJobs(page = 1, filters = {}) {
-  try {
-    // Show loading
-    UIRenderer.showLoading();
-    
-    // Get jobs data
-    const response = await TruckyService.getCompanyJobs(page, filters);
-    
-    if (response && response.data) {
-      jobsData = response.data;
-      currentPage = response.current_page || 1;
-      totalPages = response.last_page || 1;
-      
-      // Update UI
-      UIRenderer.renderJobsTable(jobsData, currentPage, totalPages);
-      UIRenderer.renderPagination(currentPage, totalPages);
-      UIRenderer.updateStats(response);
-    } else {
-      UIRenderer.showError('No data received from API');
-    }
-  } catch (error) {
-    console.error('Error loading jobs:', error);
-    UIRenderer.showError(error.message);
-  }
-}
-
-async function loadStats() {
-  try {
-    // Get company stats
-    const stats = await TruckyService.getCompanyStats();
-    const monthlyStats = await TruckyService.getMonthlyStats();
-    
-    if (stats || monthlyStats) {
-      // Update stats display if needed
-      console.log('Stats loaded:', stats, monthlyStats);
-    }
-  } catch (error) {
-    console.error('Error loading stats:', error);
-  }
-}
-
-// Filter Functions
-function applyFilter(filterType) {
-  let filters = {};
-  
-  switch(filterType) {
-    case 'ongoing':
-      filters.status = 'in_progress';
-      break;
-    case 'completed':
-      filters.status = 'completed';
-      break;
-    case 'today':
-      const today = new Date().toISOString().split('T')[0];
-      filters.dateFrom = today;
-      filters.dateTo = today;
-      break;
-    default:
-      // No filter
-      break;
-  }
-  
-  loadJobs(1, filters);
-}
-
-// Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-  'use strict';
-  
-  // Check if we're on the jobs monitor section
-  const jobsSection = document.getElementById('jobs-monitor');
-  if (!jobsSection) return;
-  
-  // Initialize
-  loadJobs();
-  loadStats();
-  
-  // Setup filter buttons
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-      // Remove active class from all buttons
-      document.querySelectorAll('.filter-btn').forEach(b => {
-        b.classList.remove('active');
-      });
-      
-      // Add active class to clicked button
-      this.classList.add('active');
-      
-      // Apply filter
-      const filterType = this.getAttribute('data-filter');
-      applyFilter(filterType);
-    });
-  });
-  
-  // Setup refresh button
-  document.getElementById('refreshJobs').addEventListener('click', function() {
-    const btn = this;
-    const originalHtml = btn.innerHTML;
-    
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Refreshing...';
-    
-    loadJobs(currentPage).finally(() => {
-      btn.disabled = false;
-      btn.innerHTML = originalHtml;
-    });
-  });
-  
-  // Auto-refresh every 60 seconds if section is visible
-  setInterval(() => {
-    const rect = jobsSection.getBoundingClientRect();
-    if (rect.top >= 0 && rect.bottom <= window.innerHeight) {
-      loadJobs(currentPage);
-    }
-  }, 60000);
-});
-
-// Export for global access (if needed)
-window.loadJobs = loadJobs;
-window.loadStats = loadStats;
+        // ========== START ==========
+        document.addEventListener('DOMContentLoaded', initJobMonitor);
       
     </script>
   </body>
